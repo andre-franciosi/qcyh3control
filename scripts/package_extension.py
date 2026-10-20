@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXTENSION_SOURCE = ROOT / "gnome-extension"
 DIST = ROOT / "dist"
-FILES = ("metadata.json", "extension.js", "prefs.js")
+FILES = ("metadata.json", "extension.js", "prefs.js", "bluez.js", "rcsp.js")
 
 
 def main() -> int:

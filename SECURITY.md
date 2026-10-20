@@ -19,15 +19,13 @@ You can expect an initial response within a few days.
 
 QCY H3 Control is designed to keep your data local:
 
-- **No telemetry, no analytics, no network calls.** The application only talks
+- **No telemetry, no analytics, no network calls.** The extension only talks
   to the local BlueZ stack over D-Bus and to the headphone over Bluetooth.
 - **No credentials are stored.** There are no accounts, tokens or API keys.
-- **The only file written to disk** is `~/.config/qcyh3control/device.json`,
-  which stores the Bluetooth address of your headphone so it can reconnect
-  automatically. It contains no personal information and never leaves your
-  machine. Delete it at any time to reset the saved device.
-- **Logs** (`journalctl --user -u qcy-h3-control.service`) may contain the
-  Bluetooth address of your headphone. Review them before sharing publicly.
+- **No files are written to disk.** The extension keeps its state in memory
+  only; nothing about your headphone is persisted.
+- **Logs** may contain the Bluetooth address of your headphone. Review them
+  before sharing publicly.
 
 ## Scope
 

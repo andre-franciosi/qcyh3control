@@ -34,3 +34,5 @@ jobs:
         run: |
           node --check gnome-extension/extension.js
           node --check gnome-extension/prefs.js
+          node --check gnome-extension/bluez.js
+          node --check gnome-extension/rcsp.js

@@ -4,9 +4,18 @@ Thanks for your interest in improving QCY H3 Control!
 
 ## Development setup
 
+The GNOME extension is plain JavaScript and needs no build step. Clone the
+repository and install it with:
+
 ```sh
 git clone https://github.com/andre-franciosi/qcyh3control.git
-cd qcy-h3-control
+cd qcyh3control
+python3 scripts/install_gnome.py
+```
+
+The optional Python diagnostic app uses a virtual environment:
+
+```sh
 python3 -m venv .venv
 ./.venv/bin/python -m pip install --upgrade pip
 ./.venv/bin/python -m pip install -e ".[dev]"
@@ -23,6 +32,8 @@ For the GNOME extension, check the JavaScript syntax:
 ```sh
 node --check gnome-extension/extension.js
 node --check gnome-extension/prefs.js
+node --check gnome-extension/bluez.js
+node --check gnome-extension/rcsp.js
 ```
 
 ## Guidelines

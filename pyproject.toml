@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qcy-h3-control"
 version = "0.1.0"
-description = "Standalone QCY H3 control on Linux over BLE/JieLi RCSP, with a GNOME Shell 51 panel extension"
+description = "Self-contained GNOME Shell 51 extension to control the QCY H3 over BLE/JieLi RCSP, plus an optional Python diagnostic app"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "GPL-3.0-or-later" }

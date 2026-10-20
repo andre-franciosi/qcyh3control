@@ -4,6 +4,6 @@
   "description": "Standalone QCY H3 control in the GNOME panel, with battery, ANC and advanced equalizer.",
   "shell-version": ["51"],
   "url": "https://github.com/andre-franciosi/qcyh3control",
-  "version-name": "1",
-  "version": 1
+  "version-name": "2",
+  "version": 2
 }

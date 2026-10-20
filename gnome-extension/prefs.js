@@ -1,38 +1,13 @@
 import Adw from 'gi://Adw';
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-const BUS_NAME = 'io.github.qcyh3control';
-const OBJECT_PATH = '/io/github/qcyh3control/Control';
-const INTERFACE = 'io.github.qcyh3control.Control';
-const FREQUENCIES = [
-    '55 Hz', '220 Hz', '500 Hz', '1 kHz', '1.8 kHz',
-    '2.8 kHz', '4.5 kHz', '7.5 kHz', '10 kHz', '22 kHz',
-];
-const PRESETS = [
-    ['Custom', 0], ['Default', 1], ['Pop', 2], ['Heavy Bass', 3],
-    ['Rock', 4], ['Soft', 5], ['Classic', 6],
-];
-const PRESET_OFFSETS = {
-    0: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    1: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    2: [0, 150, 150, 100, 0, 100, 200, 200, 150, 100],
-    3: [500, 400, 200, 0, -100, 0, 0, 100, 200, 100],
-    4: [400, 300, 0, -200, -100, 0, 200, 300, 400, 200],
-    5: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
-    6: [0, 0, 100, 300, 300, 300, 200, 100, 100, 0],
-};
+import {BluezController} from './bluez.js';
+import {EQ_BAND_LABELS, EQ_PRESETS, EQ_PRESET_OFFSETS} from './rcsp.js';
 
-function unpack(proxy, name, fallback) {
-    try {
-        return proxy.get_cached_property(name)?.deep_unpack() ?? fallback;
-    } catch (_error) {
-        return fallback;
-    }
-}
+const FREQUENCIES = EQ_BAND_LABELS;
+const PRESETS = EQ_PRESETS;
 
 export default class QcyH3Preferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
@@ -52,25 +27,15 @@ export default class QcyH3Preferences extends ExtensionPreferences {
 
         const statusRow = new Adw.ActionRow({
             title: 'Headphone status',
-            subtitle: 'Connecting to the QCY H3 service…',
+            subtitle: 'Connecting to the QCY H3…',
         });
         group.add(statusRow);
 
-        let proxy;
-        try {
-            proxy = Gio.DBusProxy.new_for_bus_sync(
-                Gio.BusType.SESSION,
-                Gio.DBusProxyFlags.NONE,
-                null,
-                BUS_NAME,
-                OBJECT_PATH,
-                INTERFACE,
-                null,
-            );
-        } catch (error) {
-            statusRow.set_subtitle(`Could not access the service: ${error.message}`);
-            return;
-        }
+        const controller = new BluezController({
+            onState: state => updateStatus(state),
+            onLog: message => console.debug(`QCY H3 prefs: ${message}`),
+            onError: message => statusRow.set_subtitle(message),
+        });
 
         const presetRow = new Adw.ActionRow({title: 'Preset'});
         const presetDropdown = Gtk.DropDown.new_from_strings(PRESETS.map(([name]) => name));
@@ -97,8 +62,8 @@ export default class QcyH3Preferences extends ExtensionPreferences {
             }
         };
 
-        const loadEqualizer = () => {
-            const current = unpack(proxy, 'Equalizer', []);
+        const loadEqualizer = state => {
+            const current = state.equalizer;
             if (Array.isArray(current) && current.length === FREQUENCIES.length) {
                 offsets = current.map(Number);
                 selectedPresetId = 0;
@@ -145,47 +110,29 @@ export default class QcyH3Preferences extends ExtensionPreferences {
         group.add(buttonRow);
         controls.push(resetButton, applyButton);
 
-        const isReady = () =>
-            proxy.g_name_owner !== null &&
-            unpack(proxy, 'Connected', false) &&
-            unpack(proxy, 'ProtocolReady', false);
-
-        const updateStatus = () => {
-            const connected = unpack(proxy, 'Connected', false);
-            const ready = unpack(proxy, 'ProtocolReady', false);
-            if (!proxy.g_name_owner)
-                statusRow.set_subtitle('Headphone service unavailable. Check that the QCY H3 daemon is running.');
-            else if (ready)
+        const updateStatus = state => {
+            if (state.protocolReady)
                 statusRow.set_subtitle('Connected · equalizer ready');
-            else if (connected)
+            else if (state.connected)
                 statusRow.set_subtitle('BLE connected · waiting for the RCSP protocol…');
+            else if (state.audioConnected)
+                statusRow.set_subtitle('Audio connected · opening the control channel…');
             else
                 statusRow.set_subtitle('Waiting for the QCY H3 to connect through GNOME Bluetooth…');
 
-            controls.forEach(control => control.set_sensitive(ready));
+            controls.forEach(control => control.set_sensitive(state.protocolReady));
+            if (state.protocolReady)
+                loadEqualizer(state);
         };
 
         const sendEqualizer = (presetId, successMessage) => {
-            if (!isReady()) {
-                updateStatus();
+            if (!controller.state.protocolReady) {
+                updateStatus(controller.state);
                 return;
             }
             statusRow.set_subtitle('Sending equalizer…');
-            proxy.call(
-                'SetEQ',
-                new GLib.Variant('(aiy)', [offsets, presetId]),
-                Gio.DBusCallFlags.NONE,
-                5000,
-                null,
-                (source, result) => {
-                    try {
-                        source.call_finish(result);
-                        statusRow.set_subtitle(successMessage);
-                    } catch (error) {
-                        statusRow.set_subtitle(`Failed to apply: ${error.message}`);
-                    }
-                },
-            );
+            controller.setEqualizer(offsets, presetId);
+            statusRow.set_subtitle(successMessage);
         };
 
         presetDropdown.connect('notify::selected', () => {
@@ -196,7 +143,7 @@ export default class QcyH3Preferences extends ExtensionPreferences {
                 return;
             selectedPresetId = preset[1];
             if (selectedPresetId !== 0) {
-                offsets = [...PRESET_OFFSETS[selectedPresetId]];
+                offsets = [...EQ_PRESET_OFFSETS[selectedPresetId]];
                 showOffsets();
             }
         });
@@ -213,22 +160,11 @@ export default class QcyH3Preferences extends ExtensionPreferences {
         applyButton.connect('clicked', () =>
             sendEqualizer(selectedPresetId, 'Equalizer applied to the QCY H3.'));
 
-        const propertySignalId = proxy.connect('g-properties-changed', (_source, changed) => {
-            const changedProperties = changed.deep_unpack();
-            if ('Equalizer' in changedProperties)
-                loadEqualizer();
-            updateStatus();
-        });
-        const ownerSignalId = proxy.connect('notify::g-name-owner', updateStatus);
         window.connect('close-request', () => {
-            proxy.disconnect(propertySignalId);
-            proxy.disconnect(ownerSignalId);
+            controller.destroy();
             return false;
         });
 
-        loadEqualizer();
-        updateStatus();
-        if (proxy.g_name_owner)
-            proxy.call('Refresh', new GLib.Variant('()', []), Gio.DBusCallFlags.NONE, 5000, null, () => {});
+        controller.refresh();
     }
 }

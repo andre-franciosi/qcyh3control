@@ -1,5 +1,4 @@
 import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
@@ -9,39 +8,17 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-const BUS_NAME = 'io.github.qcyh3control';
-const OBJECT_PATH = '/io/github/qcyh3control/Control';
-const INTERFACE = 'io.github.qcyh3control.Control';
-const ANC_MODES = [
-    ['normal', 'Normal'],
-    ['transparency', 'Transparency'],
-    ['anc_low', 'ANC low'],
-    ['anc_med', 'ANC medium'],
-    ['anc_high', 'ANC high'],
-    ['adaptive', 'Adaptive'],
-];
+import {BluezController} from './bluez.js';
+import {ANC_ORDER} from './rcsp.js';
 
-function unpack(proxy, name, fallback) {
-    try {
-        return proxy.get_cached_property(name)?.deep_unpack() ?? fallback;
-    } catch (_error) {
-        return fallback;
-    }
-}
-
-function callProxy(proxy, method, signature = '', values = []) {
-    if (!proxy?.g_name_owner)
-        return;
-
-    proxy.call(method, new GLib.Variant(`(${signature})`, values),
-        Gio.DBusCallFlags.NONE, 5000, null, (source, result) => {
-            try {
-                source.call_finish(result);
-            } catch (error) {
-                Main.notifyError('QCY H3 Control', error.message);
-            }
-        });
-}
+const ANC_LABELS = {
+    normal: 'Normal',
+    transparency: 'Transparency',
+    anc_low: 'ANC low',
+    anc_med: 'ANC medium',
+    anc_high: 'ANC high',
+    adaptive: 'Adaptive',
+};
 
 // St does not provide a level bar widget (St.LevelBar does not exist in Shell 51),
 // so we draw the battery bar with Cairo on top of a St.DrawingArea.
@@ -100,12 +77,13 @@ class BatteryBar extends St.DrawingArea {
 
 const QcyPanelButton = GObject.registerClass(
 class QcyPanelButton extends PanelMenu.Button {
-    constructor(extension, proxy) {
+    constructor(extension, controller) {
         super(0.0, 'QCY H3 Control');
 
         this._extension = extension;
-        this._proxy = proxy;
+        this._controller = controller;
         this._modeItems = new Map();
+        this._state = controller.state;
 
         const panelContent = new St.BoxLayout({
             style_class: 'panel-status-menu-box',
@@ -126,11 +104,9 @@ class QcyPanelButton extends PanelMenu.Button {
         this.add_child(panelContent);
 
         this._buildMenu();
-        this._propertySignalId = proxy.connect('g-properties-changed', () => this._sync());
-        this._ownerSignalId = proxy.connect('notify::g-name-owner', () => this._sync());
         this._menuSignalId = this.menu.connect('open-state-changed', (_menu, open) => {
             if (open)
-                callProxy(this._proxy, 'Refresh');
+                this._controller.refresh();
         });
         this._sync();
     }
@@ -166,9 +142,9 @@ class QcyPanelButton extends PanelMenu.Button {
         this.menu.addMenuItem(batteryItem);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Noise cancellation'));
-        for (const [key, label] of ANC_MODES) {
-            const item = new PopupMenu.PopupMenuItem(label);
-            item.connect('activate', () => callProxy(this._proxy, 'SetMode', 's', [key]));
+        for (const key of ANC_ORDER) {
+            const item = new PopupMenu.PopupMenuItem(ANC_LABELS[key]);
+            item.connect('activate', () => this._controller.setMode(key));
             this.menu.addMenuItem(item);
             this._modeItems.set(key, item);
         }
@@ -180,20 +156,20 @@ class QcyPanelButton extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         const refreshItem = new PopupMenu.PopupMenuItem('Refresh headphone state');
-        refreshItem.connect('activate', () => callProxy(this._proxy, 'Refresh'));
+        refreshItem.connect('activate', () => this._controller.refresh());
         this.menu.addMenuItem(refreshItem);
         this._connectItem = new PopupMenu.PopupMenuItem('Connect to the QCY H3');
-        this._connectItem.connect('activate', () => callProxy(this._proxy, 'Connect'));
+        this._connectItem.connect('activate', () => this._controller.refresh());
         this.menu.addMenuItem(this._connectItem);
     }
 
+    updateState(state) {
+        this._state = state;
+        this._sync();
+    }
+
     _sync() {
-        const audioConnected = unpack(this._proxy, 'AudioConnected', false);
-        const connected = unpack(this._proxy, 'Connected', false);
-        const ready = unpack(this._proxy, 'ProtocolReady', false);
-        const battery = unpack(this._proxy, 'Battery', -1);
-        const mode = unpack(this._proxy, 'Mode', '');
-        const status = unpack(this._proxy, 'Status', 'QCY H3 service unavailable');
+        const {audioConnected, connected, protocolReady, battery, mode, status} = this._state;
 
         // The button only appears in the panel when the headphone is connected
         // (system audio or BLE control channel); it disappears when it disconnects.
@@ -206,8 +182,8 @@ class QcyPanelButton extends PanelMenu.Button {
         this._menuBatteryBar.visible = battery >= 0;
         this._batteryPercent.text = battery >= 0 ? `${battery}%` : 'Unavailable';
 
-        if (connected && ready) {
-            const modeName = ANC_MODES.find(([key]) => key === mode)?.[1] ?? 'ready';
+        if (connected && protocolReady) {
+            const modeName = ANC_LABELS[mode] ?? 'ready';
             this._connectionStatus.text = `Connected · ${modeName}`;
         } else if (connected) {
             this._connectionStatus.text = 'BLE connected · starting RCSP…';
@@ -219,7 +195,7 @@ class QcyPanelButton extends PanelMenu.Button {
 
         this._modeItems.forEach((item, key) => {
             item.setOrnament(key === mode ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
-            item.reactive = connected && ready;
+            item.reactive = connected && protocolReady;
         });
         this._connectItem.visible = audioConnected && !connected;
         this.accessible_name = battery >= 0
@@ -228,8 +204,6 @@ class QcyPanelButton extends PanelMenu.Button {
     }
 
     destroy() {
-        this._proxy.disconnect(this._propertySignalId);
-        this._proxy.disconnect(this._ownerSignalId);
         this.menu.disconnect(this._menuSignalId);
         super.destroy();
     }
@@ -237,26 +211,31 @@ class QcyPanelButton extends PanelMenu.Button {
 
 export default class QcyH3Extension extends Extension {
     enable() {
-        // NONE flags allow on-demand activation: if the daemon is not yet on
-        // the bus, D-Bus/systemd starts it when the proxy is created.
-        // The proxy persists and 'notify::g-name-owner' updates visibility
-        // when the daemon appears, without recreating the button.
-        this._proxy = Gio.DBusProxy.new_for_bus_sync(
-            Gio.BusType.SESSION,
-            Gio.DBusProxyFlags.NONE,
-            null,
-            BUS_NAME,
-            OBJECT_PATH,
-            INTERFACE,
-            null,
-        );
-        this._indicator = new QcyPanelButton(this, this._proxy);
+        // The extension talks to BlueZ directly over the system D-Bus; no
+        // external daemon is required.
+        this._controller = new BluezController({
+            onState: state => this._indicator?.updateState(state),
+            onLog: message => console.debug(`QCY H3: ${message}`),
+            onError: message => Main.notifyError('QCY H3 Control', message),
+        });
+        this._indicator = new QcyPanelButton(this, this._controller);
         Main.panel.addToStatusArea('qcy-h3-control', this._indicator, 0, 'right');
+
+        this._controller.refresh();
+        this._pollId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+            this._controller.refresh();
+            return GLib.SOURCE_CONTINUE;
+        });
     }
 
     disable() {
+        if (this._pollId) {
+            GLib.source_remove(this._pollId);
+            this._pollId = 0;
+        }
         this._indicator?.destroy();
         this._indicator = null;
-        this._proxy = null;
+        this._controller?.destroy();
+        this._controller = null;
     }
 }
