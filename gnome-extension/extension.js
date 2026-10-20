@@ -215,7 +215,7 @@ export default class QcyH3Extension extends Extension {
         // external daemon is required.
         this._controller = new BluezController({
             onState: state => this._indicator?.updateState(state),
-            onLog: message => console.debug(`QCY H3: ${message}`),
+            onLog: message => console.log(`QCY H3: ${message}`),
             onError: message => Main.notifyError('QCY H3 Control', message),
         });
         this._indicator = new QcyPanelButton(this, this._controller);

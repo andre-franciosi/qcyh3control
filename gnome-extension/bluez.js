@@ -59,9 +59,15 @@ function classify(name, uuids, icon) {
     return 'audio';
 }
 
-function variantUnpack(variant) {
-    return variant ? variant.deep_unpack() : undefined;
+// Method replies are tuples; return the first (only) child fully unpacked into
+// plain JS values (strings, booleans, arrays, Uint8Array, nested objects).
+function unpackReply(reply) {
+    return reply ? reply.get_child_value(0).recursiveUnpack() : undefined;
 }
+
+const ADAPTER_IFACE = 'org.bluez.Adapter1';
+const DISCOVERY_WINDOW_MS = 25000;
+const DISCOVERY_COOLDOWN_MS = 15000;
 
 /**
  * Manages the BlueZ connection and the RCSP channel for one QCY H3.
@@ -93,6 +99,10 @@ export class BluezController {
         this._status = 'Waiting for the QCY H3';
         this._deviceName = 'QCY H3';
         this._cancellable = new Gio.Cancellable();
+        this._busy = false;
+        this._discoveryAdapter = null;
+        this._discoveryStarted = 0;
+        this._discoveryStopped = 0;
     }
 
     get state() {
@@ -144,7 +154,46 @@ export class BluezController {
         const reply = await this._call(
             bus, BLUEZ, '/', OM_IFACE, 'GetManagedObjects', null,
             new GLib.VariantType('(a{oa{sa{sv}}})'));
-        return variantUnpack(reply) ?? {};
+        return unpackReply(reply) ?? {};
+    }
+
+    /**
+     * The BLE control endpoint ("QCY H3-APP") is only known to BlueZ while it
+     * is being scanned for, so run a short discovery when it is missing.
+     */
+    async _startDiscovery(adapterPath) {
+        const now = GLib.get_monotonic_time() / 1000;
+        if (this._discoveryAdapter) {
+            if (now - this._discoveryStarted > DISCOVERY_WINDOW_MS)
+                await this._stopDiscovery();
+            return;
+        }
+        if (this._discoveryStopped && now - this._discoveryStopped < DISCOVERY_COOLDOWN_MS)
+            return;
+        try {
+            const bus = await this._ensureBus();
+            await this._call(bus, BLUEZ, adapterPath, ADAPTER_IFACE, 'StartDiscovery');
+            this._discoveryAdapter = adapterPath;
+            this._discoveryStarted = now;
+            this._onLog(`Scanning for the BLE control endpoint on ${adapterPath}.`);
+        } catch (error) {
+            this._onLog(`StartDiscovery failed: ${error.message}`);
+            this._discoveryStopped = now;
+        }
+    }
+
+    async _stopDiscovery() {
+        const adapter = this._discoveryAdapter;
+        if (!adapter)
+            return;
+        this._discoveryAdapter = null;
+        this._discoveryStopped = GLib.get_monotonic_time() / 1000;
+        try {
+            const bus = await this._ensureBus();
+            await this._call(bus, BLUEZ, adapter, ADAPTER_IFACE, 'StopDiscovery');
+        } catch (error) {
+            this._onLog(`StopDiscovery failed: ${error.message}`);
+        }
     }
 
     /** Scan BlueZ for QCY H3 devices, separating audio from the BLE endpoint. */
@@ -152,7 +201,10 @@ export class BluezController {
         const objects = await this._getManagedObjects();
         const audio = [];
         const ble = [];
+        let adapterPath = null;
         for (const [path, interfaces] of Object.entries(objects)) {
+            if (interfaces[ADAPTER_IFACE] && !adapterPath)
+                adapterPath = path;
             const props = interfaces[DEVICE_IFACE];
             if (!props)
                 continue;
@@ -177,13 +229,24 @@ export class BluezController {
                 audio.push(entry);
         }
         ble.sort((a, b) => Number(b.connected) - Number(a.connected));
-        return {audio, ble};
+        return {audio, ble, adapterPath};
     }
 
     /** Refresh audio presence and try to open the BLE control channel. */
     async refresh() {
+        if (this._busy)
+            return;
+        this._busy = true;
         try {
-            const {audio, ble} = await this._findDevices();
+            await this._refresh();
+        } finally {
+            this._busy = false;
+        }
+    }
+
+    async _refresh() {
+        try {
+            const {audio, ble, adapterPath} = await this._findDevices();
             const audioDevice = audio.find(d => d.connected) ?? null;
             const audioConnected = audioDevice !== null;
             if (audioConnected !== this._audioConnected) {
@@ -193,18 +256,34 @@ export class BluezController {
             if (audioDevice)
                 this._deviceName = audioDevice.name;
 
+            // Audio dropped in GNOME: release the BLE control channel so the
+            // button disappears and the headphone is not kept attached to us.
+            if (this._connected && !audioConnected) {
+                this._onLog('System audio disconnected; closing the BLE control channel.');
+                await this._disconnectBle();
+                this._setStatus('Waiting for the QCY H3');
+                return;
+            }
             if (this._connected) {
+                await this._stopDiscovery();
                 await this._readBattery();
                 return;
             }
-            if (ble.length) {
+            // BlueZ keeps the BLE endpoint cached after disconnecting, so only
+            // open it while the headphone is connected for audio.
+            if (ble.length && audioConnected) {
+                await this._stopDiscovery();
                 await this._connectDevice(ble[0]);
                 return;
             }
-            if (audioConnected)
-                this._setStatus('Audio connected · opening controls…');
-            else
+            if (audioConnected) {
+                this._setStatus('Audio connected · searching for the control channel…');
+                const adapter = adapterPath ?? audioDevice.path.replace(/\/dev_[^/]+$/, '');
+                await this._startDiscovery(adapter);
+            } else {
+                await this._stopDiscovery();
                 this._setStatus('Waiting for the QCY H3');
+            }
         } catch (error) {
             this._onLog(`BlueZ query failed: ${error.message}`);
         }
@@ -221,6 +300,7 @@ export class BluezController {
             if (!props.Connected) {
                 await this._call(bus, BLUEZ, device.path, DEVICE_IFACE, 'Connect');
             }
+            await this._waitServicesResolved(device.path);
 
             this._deviceProxy = new Gio.DBusProxy({
                 g_connection: bus,
@@ -262,7 +342,22 @@ export class BluezController {
             bus, BLUEZ, path, PROPS_IFACE, 'GetAll',
             new GLib.Variant('(s)', [DEVICE_IFACE]),
             new GLib.VariantType('(a{sv})'));
-        return variantUnpack(reply) ?? {};
+        return unpackReply(reply) ?? {};
+    }
+
+    async _waitServicesResolved(path, attempts = 20) {
+        for (let i = 0; i < attempts; i++) {
+            const props = await this._getDeviceProps(path);
+            if (props.ServicesResolved)
+                return true;
+            await new Promise(resolve => {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                    resolve();
+                    return GLib.SOURCE_REMOVE;
+                });
+            });
+        }
+        return false;
     }
 
     _onDevicePropsChanged() {
@@ -315,12 +410,11 @@ export class BluezController {
             BLUEZ, PROPS_IFACE, 'PropertiesChanged', notifyPath, null,
             Gio.DBusSignalFlags.NONE,
             (_conn, _sender, _path, _iface, _signal, params) => {
-                const [iface, changed] = params.deep_unpack();
+                const [iface, changed] = params.recursiveUnpack();
                 if (iface !== GATT_CHAR_IFACE)
                     return;
-                const value = changed.Value;
-                if (value)
-                    this._onNotification(value.deep_unpack());
+                if (changed.Value)
+                    this._onNotification(changed.Value);
             });
 
         await this._call(bus, BLUEZ, notifyPath, GATT_CHAR_IFACE, 'StartNotify');
@@ -512,6 +606,19 @@ export class BluezController {
         }
     }
 
+    async _disconnectBle() {
+        const path = this._devicePath;
+        if (path) {
+            try {
+                const bus = await this._ensureBus();
+                await this._call(bus, BLUEZ, path, DEVICE_IFACE, 'Disconnect');
+            } catch (error) {
+                this._onLog(`BLE disconnect failed: ${error.message}`);
+            }
+        }
+        this._teardown();
+    }
+
     _teardown() {
         if (this._notifySignalId && this._bus) {
             this._bus.signal_unsubscribe(this._notifySignalId);
@@ -537,6 +644,15 @@ export class BluezController {
     }
 
     destroy() {
+        if (this._discoveryAdapter && this._bus) {
+            try {
+                this._bus.call_sync(BLUEZ, this._discoveryAdapter, ADAPTER_IFACE,
+                    'StopDiscovery', null, null, Gio.DBusCallFlags.NONE, 2000, null);
+            } catch (error) {
+                this._onLog(`StopDiscovery failed: ${error.message}`);
+            }
+            this._discoveryAdapter = null;
+        }
         this._cancellable.cancel();
         this._teardown();
         this._bus = null;
