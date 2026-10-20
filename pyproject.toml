@@ -27,9 +27,9 @@ classifiers = [
 dependencies = ["bleak>=0.22,<2", "dbus-fast>=2"]
 
 [project.urls]
-Homepage = "https://github.com/andre-franciosi/qcy-h3-control"
-Repository = "https://github.com/andre-franciosi/qcy-h3-control"
-Issues = "https://github.com/andre-franciosi/qcy-h3-control/issues"
+Homepage = "https://github.com/andre-franciosi/qcyh3control"
+Repository = "https://github.com/andre-franciosi/qcyh3control"
+Issues = "https://github.com/andre-franciosi/qcyh3control/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

@@ -1,6 +1,6 @@
 # QCY H3 Control
 
-[![CI](https://github.com/andre-franciosi/qcy-h3-control/actions/workflows/ci.yml/badge.svg)](https://github.com/andre-franciosi/qcy-h3-control/actions/workflows/ci.yml)
+[![CI](https://github.com/andre-franciosi/qcyh3control/actions/workflows/ci.yml/badge.svg)](https://github.com/andre-franciosi/qcyh3control/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![GNOME Shell 51](https://img.shields.io/badge/GNOME%20Shell-51-4a86cf.svg)](https://www.gnome.org/)
@@ -42,7 +42,7 @@ The app implements ANC off, transparency, low/medium/high ANC and adaptive, a 10
 Clone the repository and enter its directory:
 
 ```sh
-git clone https://github.com/andre-franciosi/qcy-h3-control.git
+git clone https://github.com/andre-franciosi/qcyh3control.git
 cd qcy-h3-control
 ```
 
@@ -73,7 +73,7 @@ This extension is **not published on [extensions.gnome.org](https://extensions.g
 1. Clone the repository into a **permanent path** (the daemon runs from here, so do not delete it afterwards) and set up the virtual environment as described above:
 
    ```sh
-   git clone https://github.com/andre-franciosi/qcy-h3-control.git
+   git clone https://github.com/andre-franciosi/qcyh3control.git
    cd qcy-h3-control
    python3 -m venv .venv
    ./.venv/bin/python -m pip install --upgrade pip

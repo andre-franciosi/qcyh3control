@@ -5,7 +5,7 @@ Thanks for your interest in improving QCY H3 Control!
 ## Development setup
 
 ```sh
-git clone https://github.com/andre-franciosi/qcy-h3-control.git
+git clone https://github.com/andre-franciosi/qcyh3control.git
 cd qcy-h3-control
 python3 -m venv .venv
 ./.venv/bin/python -m pip install --upgrade pip

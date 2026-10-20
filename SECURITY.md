@@ -4,7 +4,7 @@
 
 If you discover a security issue, please **do not** open a public issue.
 Instead, report it privately using GitHub's
-[Security Advisories](https://github.com/andre-franciosi/qcy-h3-control/security/advisories/new)
+[Security Advisories](https://github.com/andre-franciosi/qcyh3control/security/advisories/new)
 or by contacting the maintainer directly.
 
 Please include:
