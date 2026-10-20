@@ -100,6 +100,18 @@ systemctl --user status qcy-h3-control.service       # daemon status
 
 If the button does not appear, confirm the extension is enabled with `gnome-extensions enable qcy-h3-control@andre-franciosi.github.io` and log out/in again.
 
+### Publishing to extensions.gnome.org
+
+The extension can also be submitted to the official GNOME Extensions store. Build the upload bundle with:
+
+```sh
+./.venv/bin/python scripts/package_extension.py
+```
+
+This creates `dist/qcy-h3-control@andre-franciosi.github.io.v1.shell-extension.zip` with `metadata.json`, `extension.js` and `prefs.js` at the archive root, which is the layout the store expects. Upload it at <https://extensions.gnome.org/upload/> and follow the review process.
+
+> **Note:** the store only hosts the GNOME Shell extension. The Python daemon and the BLE control logic still have to be installed from this repository, so the store listing should link back here for the full setup.
+
 To check the daemon: `systemctl --user status qcy-h3-control.service`. Logs: `journalctl --user -u qcy-h3-control.service -f`. To uninstall, disable the extension (`gnome-extensions disable qcy-h3-control@andre-franciosi.github.io`), stop/disable the service (`systemctl --user disable --now qcy-h3-control.service`) and remove the extension folder and the `~/.config/systemd/user/qcy-h3-control.service` file.
 
 The button appears when the QCY H3 is connected over BlueZ audio or the BLE channel. The ANC and EQ controls become active after the BLE handshake. The GNOME extension talks to the daemon over the local session D-Bus; no root permission is required.
