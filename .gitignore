@@ -18,6 +18,9 @@ device.json
 profile.json
 *.local.json
 
+# Maintainer-only notes (kept local, not published)
+MAINTAINERS.md
+
 # Editors / OS
 .vscode/
 .idea/
