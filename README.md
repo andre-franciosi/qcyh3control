@@ -43,7 +43,7 @@ Clone the repository and enter its directory:
 
 ```sh
 git clone https://github.com/andre-franciosi/qcyh3control.git
-cd qcy-h3-control
+cd qcyh3control
 ```
 
 On Debian/Ubuntu and derivatives, install the system dependencies and set up a virtual environment:
@@ -66,15 +66,15 @@ Start the diagnostic app with `./.venv/bin/qcy-h3-control`. For additional diagn
 
 The extension is self-contained and works without any other GNOME extension. It adds a button with a headphone symbol and a battery bar to the top panel. The button's menu shows the percentage, the ANC modes and a shortcut to **Advanced equalizer settings**, which opens a separate window. The audio connection remains managed by GNOME's Bluetooth/PipeWire.
 
-### Installing without the GNOME Extensions store
+### Installing the extension
 
-This extension is **not published on [extensions.gnome.org](https://extensions.gnome.org)**. You install it manually (a "sideload" install) with the bundled installer, which copies the files into your user extension folder and sets up the daemon. No store, no `.zip` upload and no root access are required.
+The extension is installed manually (a "sideload" install) with the bundled installer, which copies the files into your user extension folder and sets up the daemon. No store, no `.zip` upload and no root access are required. This is the supported installation method, because the extension also needs the Python daemon that the GNOME Extensions store cannot provide.
 
 1. Clone the repository into a **permanent path** (the daemon runs from here, so do not delete it afterwards) and set up the virtual environment as described above:
 
    ```sh
    git clone https://github.com/andre-franciosi/qcyh3control.git
-   cd qcy-h3-control
+   cd qcyh3control
    python3 -m venv .venv
    ./.venv/bin/python -m pip install --upgrade pip
    ./.venv/bin/python -m pip install -e ".[dev]"
@@ -99,18 +99,6 @@ systemctl --user status qcy-h3-control.service       # daemon status
 ```
 
 If the button does not appear, confirm the extension is enabled with `gnome-extensions enable qcy-h3-control@andre-franciosi.github.io` and log out/in again.
-
-### Publishing to extensions.gnome.org
-
-The extension can also be submitted to the official GNOME Extensions store. Build the upload bundle with:
-
-```sh
-./.venv/bin/python scripts/package_extension.py
-```
-
-This creates `dist/qcy-h3-control@andre-franciosi.github.io.v1.shell-extension.zip` with `metadata.json`, `extension.js` and `prefs.js` at the archive root, which is the layout the store expects. Upload it at <https://extensions.gnome.org/upload/> and follow the review process.
-
-> **Note:** the store only hosts the GNOME Shell extension. The Python daemon and the BLE control logic still have to be installed from this repository, so the store listing should link back here for the full setup.
 
 To check the daemon: `systemctl --user status qcy-h3-control.service`. Logs: `journalctl --user -u qcy-h3-control.service -f`. To uninstall, disable the extension (`gnome-extensions disable qcy-h3-control@andre-franciosi.github.io`), stop/disable the service (`systemctl --user disable --now qcy-h3-control.service`) and remove the extension folder and the `~/.config/systemd/user/qcy-h3-control.service` file.
 
