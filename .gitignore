@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+dist/
+build/
+*.log
+
+# Local user data (never commit device addresses or profiles)
+device.json
+profile.json
+*.local.json
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

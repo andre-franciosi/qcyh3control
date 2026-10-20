@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and discussions
+    url: https://github.com/andre-franciosi/qcy-h3-control/discussions
+    about: Ask questions and share tips with the community.

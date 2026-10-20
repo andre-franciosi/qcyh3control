@@ -1,0 +1,7 @@
+{
+  "uuid": "qcy-h3-control@andre-franciosi.github.io",
+  "name": "QCY H3 Control",
+  "description": "Standalone QCY H3 control in the GNOME panel, with battery, ANC and advanced equalizer.",
+  "shell-version": ["51"],
+  "version": 1
+}

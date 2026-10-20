@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "service_uuid": null,
+  "write_characteristic_uuid": null,
+  "write_type": "with_response",
+  "modes": {
+    "normal": null,
+    "anc": null,
+    "transparency": null
+  },
+  "notify_characteristics": []
+}
